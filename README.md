@@ -43,11 +43,23 @@ pip install -r requirements.txt
 # Browser auf http://127.0.0.1:8080
 ```
 
+Optional mit LLM-Reasoning (empfohlen):
+
+```bash
+# Ollama lokal starten (falls nicht bereits laufend)
+ollama serve &
+# Modell ziehen (einmalig, ~2 GB)
+ollama pull llama3.2:3b
+# Emergence-Mini mit LLM starten
+./run.sh
+```
+
 Optional mit Tests:
 
 ```bash
-python3 -m pytest tests/ -v           # 50+ Unit + Integration Tests
-python3 smoke_test.py                 # End-to-End Smoke Test
+python3 -m pytest tests/ -v           # 80+ Unit + Integration Tests
+python3 smoke_test.py                 # End-to-End Smoke Test (regelbasiert)
+python3 smoke_test_llm.py             # Live-LLM-Test (braucht Ollama)
 ```
 
 ---
@@ -81,7 +93,8 @@ emergence-mini-dilles/
 │   ├── agents.py          Agent state, personality, position
 │   ├── needs.py           Energy/Knowledge/Influence decay
 │   ├── tools.py           Tool registry + handlers + location-gating
-│   ├── reasoning.py       Rule-based decision engine
+│   ├── reasoning.py       Decision engine (LLM + rule-based fallback)
+│   ├── llm.py             Ollama client + OpenAI-style tool schema
 │   ├── governance.py      Constitution + Town Hall voting (70% threshold)
 │   └── turn.py            Round-robin + reactive triggers
 ├── data/
@@ -91,14 +104,17 @@ emergence-mini-dilles/
 │   ├── style.css
 │   └── app.js             Canvas-Renderer + WebSocket-Client
 ├── tests/
+│   ├── conftest.py
 │   ├── test_db.py
 │   ├── test_world.py
 │   ├── test_agents.py
 │   ├── test_tools.py
 │   ├── test_governance.py
 │   ├── test_reasoning.py
+│   ├── test_llm.py
 │   └── test_api.py
-├── smoke_test.py          End-to-end Live-Test (50+ Checks)
+├── smoke_test.py          End-to-End Live-Test (regelbasiert, 50+ Checks)
+├── smoke_test_llm.py      Live-LLM-Test gegen echtes Ollama-Modell
 ├── requirements.txt
 ├── run.sh                 Startet uvicorn auf Port 8080
 └── .gitignore
@@ -127,6 +143,95 @@ Local-Dev-Tool gedacht, nicht als öffentlicher Service. Für Produktion:
 - Reverse-Proxy mit Auth davor (z. B. Caddy mit Basic-Auth)
 - `uvicorn` hinter `gunicorn` + `systemd`
 - DB regelmäßig sichern
+
+---
+
+## LLM Integration
+
+Emergence-Mini unterstützt **lokale LLMs via Ollama** als Reasoning-Engine.
+Ohne LLM läuft die regelbasierte Engine (deterministisch, schnell, gut für
+Tests). Mit LLM werden die Agenten emergent, character-stimmig und
+nicht-reproduzierbar — wie im Original.
+
+### Setup
+
+```bash
+# 1. Ollama installieren (falls nicht vorhanden)
+# macOS:   brew install ollama
+# Linux:   curl -fsSL https://ollama.com/install.sh | sh
+# Windows: https://ollama.com/download
+
+# 2. Ollama starten
+ollama serve
+
+# 3. Modell ziehen (einmalig, ~2 GB für 3B, ~5 GB für 7B)
+ollama pull llama3.2:3b
+
+# 4. Emergence-Mini starten (LLM wird automatisch erkannt)
+./run.sh
+```
+
+### Konfiguration via Umgebungsvariablen
+
+| Variable | Default | Beschreibung |
+|----------|---------|--------------|
+| `EMERGENCE_LLM_ENABLED` | `1` | `0` erzwingt regelbasierte Engine |
+| `EMERGENCE_LLM_URL` | `http://127.0.0.1:11434` | Ollama-Server |
+| `EMERGENCE_LLM_MODEL` | `llama3.2:3b` | Modell-Name (siehe unten) |
+| `EMERGENCE_LLM_TIMEOUT` | `30` | Request-Timeout in Sekunden |
+
+Beispiel mit größerem Modell:
+
+```bash
+EMERGENCE_LLM_MODEL=qwen2.5-coder:7b ./run.sh
+```
+
+### Empfohlene Modelle
+
+| Modell | Größe | Stärke | Schwäche |
+|--------|-------|--------|----------|
+| **`llama3.2:3b`** ⭐ | 2.0 GB | Schnell, gute Tool-Use-Fähigkeit, niedriger RAM-Bedarf | Kurze Antworten |
+| `gemma3:latest` | 3.3 GB | Bewährt, gute Reasoning-Qualität | Mittel-schnell |
+| `qwen2.5-coder:7b` | 4.7 GB | Exzellent für strukturierte Aufgaben | Höherer RAM-Bedarf |
+| `qwen3.5:latest` | 6.6 GB | Neueste Generation, multimodal | Langsamer |
+| `gemma4:latest` | 9.6 GB | Bestes Reasoning | Langsam, hoher RAM |
+
+Für die meisten Setups ist **llama3.2:3b** der beste Kompromiss: ~1-3s Latenz
+pro Decision, 4-8 GB RAM, deterministische Tool-Calls.
+
+Modelle ohne brauchbare Tool-Use-Fähigkeit (z.B. `moondream`,
+`nomic-embed-text`) werden zwar nicht crashen, aber das System fällt auf
+die regelbasierte Engine zurück.
+
+### Wie es funktioniert
+
+Pro Agent-Turn:
+
+1. Engine sammelt Personality-Traits, aktuellen State (Energy, Knowledge,
+   Influence, Credits), Position und sichtbare Tools (gefiltert nach
+   Location-Gating).
+2. Baut einen System-Prompt mit dieser Kontext-Information.
+3. Sendet `/api/chat` an Ollama mit Tool-Schema im OpenAI-Format.
+4. Validiert die Antwort: Tool muss existieren, Location muss passen.
+5. Bei Validierungs-Fehler oder Verbindungs-Problemen: **Fallback zur
+   regelbasierten Engine**, damit die Simulation nie hängt.
+
+Die `get_last_decision()`-Funktion in `engine.reasoning` exponiert den
+Modus (`llm`, `rule`, `fallback:...`) und die Latenz. Im Live-View ist
+das via WebSocket sichtbar (im `rationale`-Feld).
+
+### Eigene System-Prompts
+
+Die Persona-Beschreibung lebt in `engine/reasoning.py:_build_system_prompt`.
+Du kannst sie für deinen Use-Case anpassen (z.B. spezifischere Regeln,
+andere Tool-Beschreibungen, anderer Ton).
+
+### Tests
+
+- **Mock-Tests** in `tests/test_llm.py` prüfen Schema-Generierung,
+  Response-Parsing, Fallback-Pfade. 11 Tests, alle ohne Netzwerk.
+- **Live-Smoke** in `smoke_test_llm.py` ruft das echte Modell 4× auf und
+  meldet Mode + Latenz pro Decision.
 
 ---
 
@@ -208,6 +313,7 @@ python3 -m coverage report
 | `test_tools.py` | Alle 15 Tool-Handler, Location-Gating, Fehler-Pfade |
 | `test_governance.py` | 70%-Threshold, Auto-Reject, Constitution-Amendment-Apply |
 | `test_reasoning.py` | Decision-Engine für alle Personality-Types, Edge-Cases |
+| `test_llm.py` | Ollama-Client, Tool-Schema, Mock-Tests für LLM-Pfad, Fallbacks |
 | `test_api.py` | Alle HTTP-Endpoints, WebSocket, POST /api/turn |
 
 ### Smoke-Test-Details
@@ -263,6 +369,12 @@ jobs:
 
 Emergence-Mini ist inspiriert vom CC-BY-NC-4.0-Original von [Emergence AI](https://github.com/EmergenceAI/Emergence-World).
 Dieser Klon: **MIT** für nicht-kommerzielle Nutzung, ohne Gewähr.
+
+Die LLM-Integration erwartet eine lokale Ollama-Instanz und nutzt
+[Ollamas OpenAI-kompatible Tool-Calling-API](https://ollama.com/blog/tool-support).
+Ollama selbst ist MIT-lizenziert. Die Modelle (llama3.2, qwen, gemma)
+unterliegen ihren eigenen Lizenzen — bitte vor kommerzieller Nutzung
+prüfen.
 
 Quell-Repo: https://github.com/EmergenceAI/Emergence-World (Doku, Profile, Landmarks, Constitution, Tool-Katalog)
 

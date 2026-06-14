@@ -12,6 +12,9 @@ sys.path.insert(0, str(ROOT))
 
 # Disable the background engine thread for all tests; tests trigger rounds manually.
 os.environ["EMERGENCE_TEST_MODE"] = "1"
+# Force the rule-based reasoning path; the LLM path is exercised by the
+# dedicated test_llm.py suite with a mocked HTTP client.
+os.environ["EMERGENCE_LLM_ENABLED"] = "0"
 
 
 @pytest.fixture(scope="function")
