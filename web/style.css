@@ -1,0 +1,53 @@
+* { box-sizing: border-box; }
+body { margin: 0; font-family: ui-monospace, "SF Mono", Menlo, monospace;
+       background: #0b0f14; color: #d6e2ee; }
+header { display: flex; justify-content: space-between; align-items: baseline;
+         padding: 12px 18px; border-bottom: 1px solid #1c2733; background: #0e141b; }
+header h1 { margin: 0; font-size: 18px; letter-spacing: 1px; color: #6cf0c2; }
+.meta span { margin-left: 14px; color: #8aa1b6; font-size: 12px; }
+.meta b { color: #d6e2ee; }
+.ws-status.connected { color: #6cf0c2; }
+.ws-status.disconnected { color: #ff6c6c; }
+main { display: grid; grid-template-columns: 1fr 360px; gap: 16px; padding: 16px; }
+.canvas-wrap { background: #0e141b; padding: 10px; border: 1px solid #1c2733; }
+canvas { display: block; width: 100%; height: auto; image-rendering: pixelated;
+         background: #060a0e; }
+.legend { padding-top: 8px; font-size: 12px; color: #8aa1b6; }
+.legend .dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%;
+               margin-right: 4px; margin-left: 12px; vertical-align: middle; }
+.dot.anchor { background: #ffd166; }
+.dot.flora  { background: #6cf0c2; }
+.dot.lovely { background: #ff8fb1; }
+.dot.spark  { background: #82aaff; }
+aside { background: #0e141b; padding: 14px; border: 1px solid #1c2733;
+        height: calc(100vh - 80px); overflow-y: auto; }
+aside h2 { font-size: 12px; text-transform: uppercase; letter-spacing: 1px;
+           color: #6cf0c2; margin: 18px 0 6px; }
+#feed { list-style: none; padding: 0; margin: 0; max-height: 220px; overflow-y: auto; }
+#feed li { font-size: 12px; padding: 4px 0; border-bottom: 1px dotted #1c2733; }
+#feed li .who { color: #82aaff; }
+#feed li .tool { color: #ffd166; }
+#feed li .why { color: #6c8aa6; font-style: italic; }
+.agent-card { background: #0a1018; border: 1px solid #1c2733; padding: 8px; margin: 6px 0; }
+.agent-card h3 { margin: 0 0 4px; font-size: 13px; }
+.agent-card .bar { height: 4px; background: #1c2733; margin: 2px 0; border-radius: 2px; }
+.agent-card .bar > i { display: block; height: 100%; border-radius: 2px; }
+.bar.energy > i { background: #ffd166; }
+.bar.knowledge > i { background: #82aaff; }
+.bar.influence > i { background: #ff8fb1; }
+.bar.credits > i { background: #6cf0c2; }
+.proposal { background: #0a1018; border: 1px solid #1c2733; padding: 8px; margin: 6px 0; }
+.proposal h4 { margin: 0 0 4px; font-size: 13px; color: #ffd166; }
+.proposal small { color: #6c8aa6; }
+#constitution { font-size: 12px; }
+#constitution .article { background: #0a1018; border: 1px solid #1c2733; padding: 8px;
+                          margin: 6px 0; }
+#constitution .article b { color: #6cf0c2; }
+form#manual { display: grid; gap: 6px; }
+form#manual label { display: grid; gap: 2px; font-size: 11px; color: #8aa1b6; }
+form#manual select, form#manual input { background: #060a0e; color: #d6e2ee;
+                                          border: 1px solid #1c2733; padding: 6px;
+                                          font-family: inherit; }
+form#manual button { background: #6cf0c2; color: #060a0e; border: 0; padding: 6px;
+                      font-weight: bold; cursor: pointer; }
+form#manual button:hover { background: #82ffd6; }

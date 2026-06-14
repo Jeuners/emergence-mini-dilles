@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Emergence-Mini · Live World</title>
+  <link rel="stylesheet" href="/static/style.css" />
+</head>
+<body>
+  <header>
+    <h1>Emergence-Mini</h1>
+    <div class="meta">
+      <span>Tick <b id="tick">0</b></span>
+      <span>Agents <b id="agentCount">0</b></span>
+      <span>Active Proposals <b id="propCount">0</b></span>
+      <span class="ws-status" id="wsStatus">connecting…</span>
+    </div>
+  </header>
+
+  <main>
+    <section class="canvas-wrap">
+      <canvas id="world" width="640" height="640"></canvas>
+      <div class="legend">
+        <span class="dot anchor"></span>Anchor
+        <span class="dot flora"></span>Flora
+        <span class="dot lovely"></span>Lovely
+        <span class="dot spark"></span>Spark
+      </div>
+    </section>
+
+    <aside>
+      <h2>Live Feed</h2>
+      <ul id="feed"></ul>
+
+      <h2>Agents</h2>
+      <div id="agentList"></div>
+
+      <h2>Town Hall · Active Proposals</h2>
+      <div id="proposals"></div>
+
+      <h2>Constitution</h2>
+      <div id="constitution"></div>
+
+      <h2>Manual Control</h2>
+      <form id="manual">
+        <label>Agent
+          <select name="agent"></select>
+        </label>
+        <label>Tool
+          <select name="tool"></select>
+        </label>
+        <label>Args (JSON)
+          <input name="args" value="{}" />
+        </label>
+        <button type="submit">Run</button>
+      </form>
+    </aside>
+  </main>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>
