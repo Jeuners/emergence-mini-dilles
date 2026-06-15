@@ -166,7 +166,7 @@ def get_world_state(key: str, default=None):
         c = _conn()
         try:
             r = c.execute("SELECT value FROM world_state WHERE key=?", (key,)).fetchone()
-            return json.loads(r["value"]) if r else default
+            return json.loads(r[0]) if r else default
         finally:
             c.close()
 
