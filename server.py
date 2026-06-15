@@ -24,6 +24,8 @@ from typing import Any
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
+from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoint
+from starlette.requests import Request
 
 from engine import db, world, agents as agents_mod, governance, tools, llm as llm_mod
 from engine.turn import engine as sim_engine
@@ -31,7 +33,21 @@ from engine.turn import engine as sim_engine
 ROOT = Path(__file__).resolve().parent
 WEB = ROOT / "web"
 
+class NoCacheStaticMiddleware(BaseHTTPMiddleware):
+    """Disable browser caching for /static/* so app.js/style.css updates
+    are picked up immediately after a server restart."""
+
+    async def dispatch(self, request: Request, call_next: RequestResponseEndpoint):
+        response = await call_next(request)
+        if request.url.path.startswith("/static/"):
+            response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+            response.headers["Pragma"] = "no-cache"
+            response.headers["Expires"] = "0"
+        return response
+
+
 app = FastAPI(title="Emergence-Mini", version="0.1.0")
+app.add_middleware(NoCacheStaticMiddleware)
 
 
 def _bootstrap():
