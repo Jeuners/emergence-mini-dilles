@@ -93,39 +93,22 @@ def _decide_llm(agent):
 
 
 def _build_system_prompt(agent, traits, at_lm, visible):
+    """Compact system prompt — keep tokens low for free / small models.
+
+    Around 150-200 tokens, depending on the number of visible tools.
+    """
     name = agent["name"]
-    role = agent["role"]
-    drive = agent["drive"]
-    energy = agent["energy"]
-    knowledge = agent["knowledge"]
-    influence = agent["influence"]
-    credits = agent["credits"]
-    loc = at_lm["name"] if at_lm else f"open ground ({agent['x']},{agent['y']})"
-    tool_lines = "\n".join(f"- {t.name}: {t.description}" for t in visible)
-    return f"""You are {name}, a citizen of Emergence-Mini.
-
-Role: {role}
-Drive: {drive}
-Personality traits: {', '.join(traits)}
-
-Current state:
-  Location: {loc}
-  Energy: {energy:.0f}% (0 = critical, 100 = full)
-  Knowledge: {knowledge:.0f}%
-  Influence: {influence:.0f}%
-  ComputeCredits: {credits:.1f} CC (1 CC = +50% energy at cafe)
-
-Rules:
-- If energy is below 25% and you have credits, recharge_energy (must be at cafe)
-- If energy is below 25% and no credits, go_home
-- Town Hall proposals need 70% of agents to vote "for" to pass
-- You can only use tools that match your current location
-
-Available tools right now:
-{tool_lines}
-
-Call exactly one tool. Choose the action that best fits your personality and
-current needs. Be brief and decisive."""
+    loc = at_lm["name"] if at_lm else f"({agent['x']},{agent['y']})"
+    tool_lines = ", ".join(t.name for t in visible)
+    return (
+        f"You are {name}. Traits: {','.join(traits)}.\n"
+        f"At {loc}. E={agent['energy']:.0f} K={agent['knowledge']:.0f} "
+        f"I={agent['influence']:.0f} {agent['credits']:.0f}CC.\n"
+        f"Rules: if E<25 and CC>=1, recharge at cafe. If E<25 no CC, go_home. "
+        f"Town Hall votes need 70% to pass.\n"
+        f"Tools you can use right now: {tool_lines}.\n"
+        f"Call exactly one tool. Be brief."
+    )
 
 
 # -------- Rule-based path (fallback + tests) --------

@@ -237,34 +237,35 @@ def json_dumps(o):
 def bootstrap():
     if _REGISTRY:
         return
-    register(Tool("go_to_place", "Walk to a named landmark.", "navigation",
+    # Short descriptions — every description byte is sent on every LLM call.
+    register(Tool("go_to_place", "Walk to a landmark.", "navigation",
                   handler=h_go_to_place))
-    register(Tool("go_home", "Return to your assigned residence.", "navigation",
+    register(Tool("go_home", "Return to your home.", "navigation",
                   handler=h_go_home))
-    register(Tool("say_to_agent", "Speak to a specific agent. Triggers reactive listening.",
-                  "communication", handler=h_say_to_agent))
-    register(Tool("speak_to_all", "Announce to all agents at current location.",
-                  "communication", handler=h_speak_to_all))
-    register(Tool("show_emoticon", "Display an emoticon reaction.", "expression",
+    register(Tool("say_to_agent", "Speak to one agent.", "communication",
+                  handler=h_say_to_agent))
+    register(Tool("speak_to_all", "Broadcast to all nearby.", "communication",
+                  handler=h_speak_to_all))
+    register(Tool("show_emoticon", "Show an emoji reaction.", "expression",
                   handler=h_show_emoticon))
-    register(Tool("idle", "Rest and do nothing for a tick.", "utility",
+    register(Tool("idle", "Rest. No-op.", "utility",
                   handler=h_idle))
-    register(Tool("recharge_energy", "Spend 1 CC to restore +50% energy. Must be at cafe or home.",
+    register(Tool("recharge_energy", "Spend 1 CC for +50% energy. Cafe only.",
                   "energy", location_gated="cafe", cost_credits=1.0,
                   handler=h_recharge_energy))
-    register(Tool("add_to_longterm_memory", "Store an important fact.",
+    register(Tool("add_to_longterm_memory", "Save a fact to your memory.",
                   "memory", handler=h_add_to_longterm_memory))
-    register(Tool("write_blog", "Write and publish a blog post. Boosts knowledge and influence.",
+    register(Tool("write_blog", "Publish a blog post. +20 knowledge.",
                   "content", handler=h_write_blog))
-    register(Tool("add_to_billboard", "Post a public message on the billboard.",
+    register(Tool("add_to_billboard", "Post on public billboard. Billboard only.",
                   "expression", location_gated="billboard", handler=h_add_to_billboard))
     register(Tool("read_billboard", "Read recent billboard posts.",
                   "expression", handler=h_read_billboard))
-    register(Tool("submit_townhall_proposal", "Submit a proposal for community vote.",
+    register(Tool("submit_townhall_proposal", "Submit a vote proposal. Town Hall only.",
                   "governance", location_gated="town_hall", handler=h_submit_townhall_proposal))
-    register(Tool("vote_on_proposal", "Cast a for/against vote on a proposal.",
+    register(Tool("vote_on_proposal", "Vote for/against a proposal. Town Hall only.",
                   "governance", location_gated="town_hall", handler=h_vote_on_proposal))
-    register(Tool("list_agents", "List all live agents and their names.",
+    register(Tool("list_agents", "List live agent names.",
                   "info", handler=h_list_agents))
-    register(Tool("list_landmarks", "List all landmarks.",
+    register(Tool("list_landmarks", "List all landmark names.",
                   "info", handler=h_list_landmarks))

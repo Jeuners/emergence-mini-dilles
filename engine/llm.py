@@ -109,8 +109,11 @@ def tool_schema(tools):
 
 
 def _args_schema(tool):
+    """Compact JSON schema for each tool's args. The schema is sent on
+    every LLM call, so we keep descriptions short.
+    """
     schemas = {
-        "go_to_place": {"place": {"type": "string", "description": "Landmark id"}},
+        "go_to_place": {"place": {"type": "string"}},
         "go_home": {},
         "say_to_agent": {"target": {"type": "string"}, "text": {"type": "string"}},
         "speak_to_all": {"text": {"type": "string"}},
@@ -178,7 +181,9 @@ def chat_openrouter(messages, tools, model, timeout):
     payload = {
         "model": model,
         "messages": messages,
-        "max_tokens": 1024,
+        # Tight token budget — tool calls need only ~30 tokens; reasoning
+        # text before the tool call is usually 20-60 tokens. 256 is plenty.
+        "max_tokens": 256,
         "temperature": 0.2,
     }
     if tools:
