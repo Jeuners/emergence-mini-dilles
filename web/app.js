@@ -80,6 +80,21 @@ function draw() {
   }
 }
 
+function shortModel(name) {
+  if (!name) return '';
+  // Strip org/ prefix and :tag for compactness
+  const s = name.replace(/^.*\//, '').replace(/:latest$/, '');
+  return s;
+}
+
+function modelTag(m, provider) {
+  if (!m) return '';
+  const isCloud = provider === 'openrouter' || (m || '').includes('/');
+  const cls = isCloud ? 'cloud' : 'local';
+  const label = isCloud ? '☁ ' + shortModel(m) : '💻 ' + shortModel(m);
+  return `<span class="model-tag ${cls}" title="${m}">${label}</span>`;
+}
+
 function refreshAgentCards() {
   const wrap = document.getElementById('agentList');
   wrap.innerHTML = '';
@@ -87,7 +102,8 @@ function refreshAgentCards() {
     const div = document.createElement('div');
     div.className = 'agent-card';
     div.innerHTML = `
-      <h3>${a.name} <small>· ${a.role}</small></h3>
+      <h3>${a.name}${modelTag(a.model, a.provider)}</h3>
+      <div style="font-size:11px; color:#8aa1b6;">${a.role}</div>
       <div>at (${a.x}, ${a.y}) · ${a.mood}</div>
       <div class="bar energy"><i style="width:${a.energy}%"></i></div>
       <div class="bar knowledge"><i style="width:${a.knowledge}%"></i></div>

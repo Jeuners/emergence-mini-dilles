@@ -58,6 +58,17 @@ def bootstrap():
 
 
 def all_agents():
+    """Return live agents with their currently-assigned LLM model."""
+    from . import llm as llm_mod
+    agents = _all_agents_raw()
+    for a in agents:
+        a["model"] = llm_mod.model_for_agent(a["id"])
+        a["provider"] = llm_mod.provider_for_model(a["model"])
+    return agents
+
+
+def _all_agents_raw():
+    import sqlite3
     c = sqlite3.connect(db.DB_PATH, check_same_thread=False)
     c.row_factory = sqlite3.Row
     try:

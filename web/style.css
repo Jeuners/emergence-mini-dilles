@@ -53,6 +53,10 @@ aside h2 { font-size: 12px; text-transform: uppercase; letter-spacing: 1px;
 #feed li .why { color: #6c8aa6; font-style: italic; }
 .agent-card { background: #0a1018; border: 1px solid #1c2733; padding: 8px; margin: 6px 0; }
 .agent-card h3 { margin: 0 0 4px; font-size: 13px; }
+.agent-card .model-tag { display: inline-block; font-size: 9px; padding: 1px 5px; border-radius: 3px; margin-left: 4px; vertical-align: middle; font-weight: normal; }
+.agent-card .model-tag.local  { background: #1a2a1a; color: #6cf0c2; border: 1px solid #2a3a2a; }
+.agent-card .model-tag.cloud  { background: #2a2a1a; color: #ffd166; border: 1px solid #3a3a1a; }
+.agent-card .model-tag.short  { background: #1c2733; color: #8aa1b6; }
 .agent-card .bar { height: 4px; background: #1c2733; margin: 2px 0; border-radius: 2px; }
 .agent-card .bar > i { display: block; height: 100%; border-radius: 2px; }
 .bar.energy > i { background: #ffd166; }
