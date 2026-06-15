@@ -64,9 +64,10 @@ def test_decide_tool_parses_response(monkeypatch):
     }
     monkeypatch.setattr(llm, "PROVIDER", "ollama")
     with mock.patch.object(llm, "chat_ollama", return_value=fake):
+        # pass model directly so provider_for_model picks ollama
         name, args, meta = llm.decide_tool(
             [{"role": "user", "content": "x"}], tools=[],
-            agent_id="anchor",
+            model="llama3.2:3b",
         )
     assert name == "go_to_place"
     assert args == {"place": "library"}
@@ -80,7 +81,7 @@ def test_decide_tool_handles_string_args(monkeypatch):
     ]}}
     monkeypatch.setattr(llm, "PROVIDER", "ollama")
     with mock.patch.object(llm, "chat_ollama", return_value=fake):
-        name, args, _ = llm.decide_tool([], tools=[], agent_id="anchor")
+        name, args, _ = llm.decide_tool([], tools=[], model="llama3.2:3b")
     assert name == "idle"
     assert args == {}
 
@@ -90,7 +91,7 @@ def test_decide_tool_no_tool_call_returns_none(monkeypatch):
     fake = {"message": {"content": "I think... no tool"}}
     monkeypatch.setattr(llm, "PROVIDER", "ollama")
     with mock.patch.object(llm, "chat_ollama", return_value=fake):
-        name, args, _ = llm.decide_tool([], tools=[], agent_id="anchor")
+        name, args, _ = llm.decide_tool([], tools=[], model="llama3.2:3b")
     assert name is None
     assert args is None
 
@@ -104,12 +105,23 @@ def test_decide_tool_openrouter_response(monkeypatch):
         "usage": {"total_tokens": 50, "cost": 0.0001},
     }
     monkeypatch.setattr(llm, "PROVIDER", "openrouter")
+    monkeypatch.setattr(llm, "_openrouter_key", lambda: "sk-or-test")
     with mock.patch.object(llm, "chat_openrouter", return_value=fake):
-        name, args, meta = llm.decide_tool([], tools=[], agent_id="anchor")
+        name, args, meta = llm.decide_tool([], tools=[],
+                                           model="anthropic/claude-3.5-haiku")
     assert name == "go_to_place"
     assert args == {"place": "town_hall"}
     assert meta["provider"] == "openrouter"
     assert meta["cost_usd"] == 0.0001
+
+
+def test_provider_for_model():
+    from engine import llm
+    assert llm.provider_for_model("anthropic/claude-3.5-haiku") == "openrouter"
+    assert llm.provider_for_model("openai/gpt-4o-mini") == "openrouter"
+    assert llm.provider_for_model("llama3.2:3b") == "ollama"
+    assert llm.provider_for_model("gemma3") == "ollama"
+    assert llm.provider_for_model("mistral") == "ollama"
 
 
 def test_per_agent_model_override(monkeypatch):

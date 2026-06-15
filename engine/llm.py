@@ -83,6 +83,24 @@ def model_for_agent(agent_id: str) -> str:
     return OPENROUTER_MODEL if PROVIDER == "openrouter" else OLLAMA_MODEL
 
 
+def provider_for_model(model: str) -> str:
+    """Heuristic: a model name containing '/' is an OpenRouter-style slug
+    (org/model). Bare names without '/' (llama3.2:3b, gemma3, mistral) are
+    served by Ollama.
+    """
+    if "/" in model:
+        return "openrouter"
+    return "ollama"
+
+
+def provider_for_agent(agent_id: str) -> str:
+    """Pick the provider for a specific agent based on its model name.
+    Falls back to the global PROVIDER if the model name is ambiguous.
+    """
+    model = model_for_agent(agent_id)
+    return provider_for_model(model)
+
+
 def default_model() -> str:
     return model_for_agent("default")
 
@@ -222,21 +240,27 @@ def decide_tool(messages, tools=None, agent_id=None, model=None, timeout=None):
     """
     t0 = time.time()
     model = model or (model_for_agent(agent_id) if agent_id else default_model())
+    # Per-agent provider: if the model name looks like an OpenRouter slug
+    # ('org/model'), route to OpenRouter regardless of the global PROVIDER.
+    provider = provider_for_model(model)
+    if provider == "openrouter" and not _openrouter_key():
+        return None, None, {"error": "OPENROUTER_API_KEY not set", "provider": provider,
+                            "model": model, "latency_s": time.time() - t0}
     try:
-        if PROVIDER == "openrouter":
+        if provider == "openrouter":
             response = chat_openrouter(messages, tools or [], model, timeout or TIMEOUT)
         else:
             response = chat_ollama(messages, tools or [], model, timeout or TIMEOUT)
     except Exception as e:
-        return None, None, {"error": str(e), "provider": PROVIDER, "model": model,
+        return None, None, {"error": str(e), "provider": provider, "model": model,
                             "latency_s": time.time() - t0}
     latency = time.time() - t0
 
     cost = None
-    if PROVIDER == "openrouter":
+    if provider == "openrouter":
         cost = response.get("usage", {}).get("cost")
 
-    if PROVIDER == "openrouter":
+    if provider == "openrouter":
         msg = response.get("choices", [{}])[0].get("message", {})
     else:
         msg = response.get("message", {})
@@ -251,8 +275,10 @@ def decide_tool(messages, tools=None, agent_id=None, model=None, timeout=None):
                 args = json.loads(args)
             except Exception:
                 args = {}
-        return name, args, {"provider": PROVIDER, "model": model,
+        return name, args, {"provider": provider, "model": model,
                             "latency_s": latency, "cost_usd": cost}
+    return None, None, {"provider": provider, "model": model,
+                        "latency_s": latency, "cost_usd": cost}
     return None, None, {"provider": PROVIDER, "model": model,
                         "latency_s": latency, "cost_usd": cost}
 
