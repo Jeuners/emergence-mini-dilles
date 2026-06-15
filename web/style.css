@@ -8,6 +8,14 @@ header h1 { margin: 0; font-size: 18px; letter-spacing: 1px; color: #6cf0c2; }
 .meta b { color: #d6e2ee; }
 .ws-status.connected { color: #6cf0c2; }
 .ws-status.disconnected { color: #ff6c6c; }
+.llm-info { color: #82aaff; font-size: 11px; }
+.clock-card { background: #0a1018; border: 1px solid #1c2733; padding: 6px 8px; margin: 4px 0; }
+.clock-card .name { font-weight: bold; }
+.clock-card .tau-bar { height: 4px; background: #1c2733; border-radius: 2px; margin: 4px 0; }
+.clock-card .tau-bar > i { display: block; height: 100%; border-radius: 2px; }
+.clock-card .meta { color: #6c8aa6; font-size: 10px; }
+.drift-warn { background: #2a1018; border: 1px solid #ff6c6c; padding: 8px; margin: 6px 0; color: #ff8fb1; font-size: 11px; }
+.drift-ok { background: #0a1018; border: 1px solid #1c2733; padding: 8px; margin: 6px 0; color: #6cf0c2; font-size: 11px; }
 main { display: grid; grid-template-columns: 1fr 360px; gap: 16px; padding: 16px; }
 .canvas-wrap { background: #0e141b; padding: 10px; border: 1px solid #1c2733; }
 canvas { display: block; width: 100%; height: auto; image-rendering: pixelated;

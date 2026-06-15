@@ -146,7 +146,57 @@ Local-Dev-Tool gedacht, nicht als öffentlicher Service. Für Produktion:
 
 ---
 
-## LLM Integration
+## Time Dilation (τ)
+
+Emergence-Mini implementiert einen Ausschnitt des Frameworks aus
+[Time Dilation in LLM Agent Systems](https://github.com/Jeuners/Time_Dilation_in_LLM_Agent_Systems) (Dillenberg 2026).
+
+### Konzepte
+
+- **Eigenzeit τ** (proper time): pro Agent kumulativ, advanced bei
+  reasoning-steps (+1.0), tool-calls (+0.5), memory-lookups (+0.2),
+  reactive-acks (+0.3). Monoton wachsend.
+- **Pace** (EWMA, α=0.3): lokale Operations-Rate pro Agent.
+- **Causal-Dilation Clock (CDC)**: pair von (vector, dilation-vector)
+  pro Aktion. Jede WebSocket-Message trägt `tau` und `pace` mit.
+- **Frame-Transformation** Φ_{src→dst}(τ) = γ · τ, mit
+  γ = pace(src) / pace(dst).
+- **Drift-Detection**: wenn `|τ_a − Φ(τ_b)| > 3.0` für ein Paar,
+  zeigt das UI eine Warnung.
+
+### Wo es lebt
+
+| Datei | Inhalt |
+|-------|--------|
+| `engine/time.py` | `AgentClock`, `ClockRegistry`, τ, Pace-EWMA, Drift-Report |
+| `engine/turn.py` | ruft `record_reasoning` / `record_tool_call` pro Tick |
+| `engine/db.py` | `turn_log.tau`, `turn_log.pace`, `turn_log.model`, `agent_clocks` |
+| `web/index.html` | "Time Dilation · Eigenzeit τ" Sektion + Drift-Warnung |
+| `web/app.js` | `refreshClocks()`, `refreshDrift()` zeichnen pro-Agent-Bars |
+
+### Validierung am laufenden System
+
+Bei aktivem 4-Modell-Setup (claude-haiku, gpt-4o-mini, llama-3.3-70b, gemma-3-4b):
+
+```
+spark    τ=18.0  pace=6.07 op/s  google/gemma-3-4b-it
+lovely   τ=18.0  pace=6.07 op/s  meta-llama/llama-3.3-70b-instruct
+flora    τ=19.2  pace=6.07 op/s  openai/gpt-4o-mini
+anchor   τ=19.2  pace=6.07 op/s  anthropic/claude-3.5-haiku
+```
+
+**Erkenntnis:** γ ≈ 1.00 über alle Paare. Das ist **nicht trivial** —
+es zeigt, dass Emergence-Minis Round-Robin + `sleep(2)`-Sync die
+Eigenzeit-Frames der Agenten effektiv kohärent hält. Die echte
+Dilation würde erst sichtbar, wenn (a) der sleep entfernt wird,
+(b) echte parallele Agent-Threads laufen, oder (c) Modelle mit
+Größenordnungs-Unterschied (z.B. lokales 70B vs API-Micro) gemischt
+werden. Siehe §5.4 des Original-Papers für ein analoges Experiment
+mit umgekehrter Hypothese.
+
+---
+
+## Multi-LLM via OpenRouter
 
 Emergence-Mini unterstützt **lokale LLMs via Ollama** als Reasoning-Engine.
 Ohne LLM läuft die regelbasierte Engine (deterministisch, schnell, gut für
@@ -175,10 +225,13 @@ ollama pull llama3.2:3b
 
 | Variable | Default | Beschreibung |
 |----------|---------|--------------|
-| `EMERGENCE_LLM_ENABLED` | `1` | `0` erzwingt regelbasierte Engine |
+| `EMERGENCE_LLM_PROVIDER` | `auto` | `ollama`, `openrouter`, oder `auto` (Key vorhanden → OpenRouter) |
 | `EMERGENCE_LLM_URL` | `http://127.0.0.1:11434` | Ollama-Server |
-| `EMERGENCE_LLM_MODEL` | `llama3.2:3b` | Modell-Name (siehe unten) |
+| `EMERGENCE_OLLAMA_MODEL` | `llama3.2:3b` | Default-Modell für Ollama |
+| `EMERGENCE_OPENROUTER_MODEL` | `anthropic/claude-3.5-haiku` | Default für OpenRouter |
+| `EMERGENCE_AGENT_<ID>_MODEL` | (default) | Per-Agent Override, z.B. `EMERGENCE_AGENT_ANCHOR_MODEL=openai/gpt-4o-mini` |
 | `EMERGENCE_LLM_TIMEOUT` | `30` | Request-Timeout in Sekunden |
+| `EMERGENCE_LLM_ENABLED` | `1` | `0` erzwingt regelbasierte Engine |
 
 Beispiel mit größerem Modell:
 
@@ -232,6 +285,8 @@ andere Tool-Beschreibungen, anderer Ton).
   Response-Parsing, Fallback-Pfade. 11 Tests, alle ohne Netzwerk.
 - **Live-Smoke** in `smoke_test_llm.py` ruft das echte Modell 4× auf und
   meldet Mode + Latenz pro Decision.
+- **Time-Dilation-Tests** in `tests/test_time.py` (14 Tests): τ,
+  Pace-EWMA, Frame-Transformation Φ, Drift-Detection.
 
 ---
 

@@ -55,22 +55,23 @@ def _decide_llm(agent):
     if not visible:
         return ("idle", {}, "no tools available")
 
-    # Build system prompt with personality + state
     system = _build_system_prompt(agent, traits, at_lm, visible)
     user = "Choose the best next action and call exactly one tool."
 
     t0 = time.time()
-    response = llm_mod.decide_tool(
+    name, args, meta = llm_mod.decide_tool(
         messages=[
             {"role": "system", "content": system},
             {"role": "user", "content": user},
         ],
         tools=llm_mod.tool_schema(visible),
+        agent_id=agent["id"],
     )
-    latency = time.time() - t0
-    name, args = response
+    latency = meta.get("latency_s", time.time() - t0)
     _last_decision["latency_s"] = latency
-    _last_decision["model"] = llm_mod.DEFAULT_MODEL
+    _last_decision["model"] = meta.get("model", llm_mod.default_model())
+    _last_decision["provider"] = meta.get("provider", llm_mod.PROVIDER)
+    _last_decision["cost_usd"] = meta.get("cost_usd")
 
     if not name:
         # model returned no tool call -> fallback
@@ -88,7 +89,7 @@ def _decide_llm(agent):
         return name, args, f"llm picked {name} but not at right location -> {rat}"
 
     _last_decision["mode"] = "llm"
-    return (name, args or {}, f"llm:{llm_mod.DEFAULT_MODEL} ({latency:.1f}s)")
+    return (name, args or {}, f"llm:{meta.get('model','?')} ({latency:.1f}s)")
 
 
 def _build_system_prompt(agent, traits, at_lm, visible):

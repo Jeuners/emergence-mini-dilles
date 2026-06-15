@@ -11,7 +11,8 @@
     <div class="meta">
       <span>Tick <b id="tick">0</b></span>
       <span>Agents <b id="agentCount">0</b></span>
-      <span>Active Proposals <b id="propCount">0</b></span>
+      <span>Proposals <b id="propCount">0</b></span>
+      <span id="llmInfo" class="llm-info">…</span>
       <span class="ws-status" id="wsStatus">connecting…</span>
     </div>
   </header>
@@ -28,6 +29,10 @@
     </section>
 
     <aside>
+      <h2>Time Dilation · Eigenzeit τ</h2>
+      <div id="clocks"></div>
+      <div id="drift"></div>
+
       <h2>Live Feed</h2>
       <ul id="feed"></ul>
 

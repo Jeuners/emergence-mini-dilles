@@ -99,6 +99,47 @@ function refreshAgentCards() {
   }
 }
 
+function refreshClocks() {
+  if (!snapshot || !snapshot.clocks) return;
+  const wrap = document.getElementById('clocks');
+  wrap.innerHTML = '';
+  const entries = Object.entries(snapshot.clocks);
+  // sort by τ descending
+  entries.sort((a, b) => b[1].tau - a[1].tau);
+  const maxTau = Math.max(1, entries.length ? entries[0][1].tau : 1);
+  const colorFor = { anchor: '#ffd166', flora: '#6cf0c2', lovely: '#ff8fb1', spark: '#82aaff' };
+  for (const [aid, c] of entries) {
+    const div = document.createElement('div');
+    div.className = 'clock-card';
+    const pct = (c.tau / maxTau) * 100;
+    div.innerHTML = `
+      <div class="name" style="color:${colorFor[aid] || '#fff'}">${aid}</div>
+      <div class="tau-bar"><i style="width:${pct}%; background:${colorFor[aid] || '#fff'}"></i></div>
+      <div class="meta">τ = ${c.tau.toFixed(2)} · pace = ${c.pace.toFixed(2)} op/s · ${c.n_ops} ops</div>
+    `;
+    wrap.appendChild(div);
+  }
+}
+
+function refreshDrift() {
+  if (!snapshot || !snapshot.drift) return;
+  const wrap = document.getElementById('drift');
+  const d = snapshot.drift;
+  if (!d.pairs || d.pairs.length === 0) {
+    wrap.innerHTML = '<small>No multi-agent drift yet.</small>';
+    return;
+  }
+  const top = d.pairs[0];
+  if (top.divergent) {
+    wrap.className = 'drift-warn';
+    wrap.innerHTML = `<b>⚠ DILATION DRIFT</b> · ${top.a}↔${top.b}: |Δτ| = ${top.drift.toFixed(1)} (γ=${top.gamma_ab})<br>
+      <small>${top.a} has experienced ${top.tau_a} units, ${top.b} ${top.tau_b}. Frame transformation exceeds threshold ${d.threshold}.</small>`;
+  } else {
+    wrap.className = 'drift-ok';
+    wrap.innerHTML = `<b>✓ COHERENT</b> · max drift = ${d.max_drift.toFixed(2)} (threshold ${d.threshold})`;
+  }
+}
+
 function refreshProposals() {
   const wrap = document.getElementById('proposals');
   wrap.innerHTML = '';
@@ -158,8 +199,15 @@ async function refreshAll() {
   draw();
   refreshHeader();
   refreshAgentCards();
+  refreshClocks();
+  refreshDrift();
   refreshProposals();
   refreshConstitution();
+  // LLM info
+  if (snapshot.llm) {
+    const info = document.getElementById('llmInfo');
+    info.textContent = `${snapshot.llm.provider} · ${snapshot.llm.model}`;
+  }
 }
 
 function connectWS() {
@@ -197,6 +245,10 @@ function connectWS() {
       }
     } else if (msg.type === 'tick') {
       document.getElementById('tick').textContent = msg.tick;
+      if (msg.clocks) snapshot.clocks = msg.clocks;
+      if (msg.drift) snapshot.drift = msg.drift;
+      refreshClocks();
+      refreshDrift();
     }
   };
 }

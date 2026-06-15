@@ -18,6 +18,13 @@ venv/
 env/
 .venv/
 
+# Secrets — never commit API keys
+.env
+.env.local
+.env.*.local
+*.key
+*.pem
+
 # Runtime data
 emergence.db
 emergence.db-journal

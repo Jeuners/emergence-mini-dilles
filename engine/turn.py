@@ -1,4 +1,4 @@
-"""Turn manager: round-robin + reactive triggers."""
+"""Turn manager: round-robin + reactive triggers + τ-tracking."""
 import json
 import time
 import threading
@@ -11,6 +11,7 @@ from . import world
 from . import reasoning
 from . import governance
 from . import db
+from . import time as time_mod
 
 
 class Engine:
@@ -47,14 +48,23 @@ class Engine:
         self.tick += 1
         db.set_world_state("tick", self.tick)
         needs.tick_all_needs()
-        # round-robin over live agents
         for a in agents_mod.all_agents():
             self._agent_turn(a)
         governance.apply_accepted_proposals_to_constitution()
-        self._broadcast({"type": "tick", "tick": self.tick})
+        # Broadcast a per-round tick summary including the time-dilation
+        # report so the UI can render the τ-timeline + drift warnings.
+        self._broadcast({
+            "type": "tick",
+            "tick": self.tick,
+            "clocks": time_mod.registry.snapshot_all(),
+            "drift": time_mod.registry.drift_report(),
+        })
 
     def _agent_turn(self, agent):
         ctx = {"speak_events": self._speak_events}
+        # Mark this as a reasoning step in τ — the LLM call IS the agent's
+        # internal experience, so we tick before deciding.
+        time_mod.record_reasoning(agent["id"])
         tool_name, args, rationale = reasoning.decide(agent)
         tool = tools.get(tool_name)
         if not tool:
@@ -63,14 +73,20 @@ class Engine:
             return
         at_lm = world.landmark_at(agent["x"], agent["y"])
         if not tool.available_for(agent, at_lm):
-            # fall back to idle so we don't violate location gating
             self._record_turn(agent["id"], "idle", {}, {"ok": True, "fallback": True})
             return
         result = tool.handler(agent, args, ctx) if tool.handler else {"ok": False, "error": "no handler"}
-        self._record_turn(agent["id"], tool_name, args, result)
-        # refresh agent after possible state change
+        # The tool execution itself is a tool-call operation in τ
+        time_mod.record_tool_call(agent["id"])
+        # Some tools (memory) trigger additional lookups — log them too
+        if tool_name == "add_to_longterm_memory":
+            time_mod.record_memory_lookup(agent["id"])
+        meta = reasoning.get_last_decision()
+        self._record_turn(agent["id"], tool_name, args, result,
+                          model=meta.get("model"))
         a2 = agents_mod.get(agent["id"])
         if a2:
+            clock = time_mod.registry.get(agent["id"])
             self._broadcast({
                 "type": "action",
                 "agent": a2["id"],
@@ -83,8 +99,13 @@ class Engine:
                 "energy": a2["energy"], "knowledge": a2["knowledge"],
                 "influence": a2["influence"], "credits": a2["credits"],
                 "mood": a2["mood"],
+                # Time-Dilation fields
+                "tau": round(clock.tau, 3),
+                "pace": round(clock.pace, 4),
+                "model": meta.get("model"),
+                "decision_mode": meta.get("mode"),
+                "decision_latency_s": round(meta.get("latency_s", 0.0), 2),
             })
-        # reactive triggers
         self._handle_reactive(a2 or agent)
 
     def _handle_reactive(self, speaker):
@@ -100,11 +121,13 @@ class Engine:
                 self._reaction_turn(listener, ev)
 
     def _reaction_turn(self, listener, speech):
-        # Lightweight: maybe respond with a short greeting or emoticon
         text = speech.get("text", "")
         if not text:
             return
-        if any(t in listener["personality"] for t in ["warm", "expressive", "cooperative"]):
+        # Mark the reaction as a low-weight reasoning step in τ
+        time_mod.record_reactive(listener["id"])
+        if any(t in (listener.get("personality") or []) for t in
+               ["warm", "expressive", "cooperative"]):
             reply = f"Acknowledged: {text[:24]}"
             ctx = {"speak_events": []}
             tools.get("say_to_agent").handler(
@@ -113,17 +136,10 @@ class Engine:
                 ctx,
             )
 
-    def _record_turn(self, agent_id, tool, args, result):
-        import sqlite3
-        c = sqlite3.connect(db.DB_PATH, check_same_thread=False)
-        try:
-            c.execute(
-                "INSERT INTO turn_log(agent_id,tool,args,result,ts) VALUES(?,?,?,?,?)",
-                (agent_id, tool, json.dumps(args), json.dumps(result), time.time()),
-            )
-            c.commit()
-        finally:
-            c.close()
+    def _record_turn(self, agent_id, tool, args, result, model: str | None = None):
+        clock = time_mod.registry.get(agent_id)
+        db.log_turn(agent_id, tool, args, result,
+                    tau=clock.tau, pace=clock.pace, model=model)
 
     def _broadcast(self, message: dict):
         self.broadcasts.put(message)
@@ -139,9 +155,13 @@ class Engine:
         if not tool:
             return {"ok": False, "error": "no such tool"}
         ctx = {"speak_events": self._speak_events}
+        time_mod.record_reasoning(agent_id)
         result = tool.handler(agent, args, ctx)
+        time_mod.record_tool_call(agent_id)
+        clock = time_mod.registry.get(agent_id)
         self._record_turn(agent_id, tool_name, args, result)
         a2 = agents_mod.get(agent_id)
+        meta = reasoning.get_last_decision()
         self._broadcast({
             "type": "action", "agent": a2["id"], "name": a2["name"],
             "tool": tool_name, "args": args, "result": result,
@@ -150,6 +170,9 @@ class Engine:
             "energy": a2["energy"], "knowledge": a2["knowledge"],
             "influence": a2["influence"], "credits": a2["credits"],
             "mood": a2["mood"],
+            "tau": round(clock.tau, 3),
+            "pace": round(clock.pace, 4),
+            "model": meta.get("model"),
         })
         return result
 

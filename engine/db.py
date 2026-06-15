@@ -104,17 +104,44 @@ CREATE TABLE IF NOT EXISTS turn_log (
   tool TEXT NOT NULL,
   args TEXT,
   result TEXT,
+  tau REAL,             -- agent proper time at this turn
+  pace REAL,            -- EWMA pace at this turn
+  model TEXT,           -- LLM model that produced the decision
   ts REAL NOT NULL
+);
+CREATE TABLE IF NOT EXISTS agent_clocks (
+  agent_id TEXT PRIMARY KEY,
+  tau REAL NOT NULL DEFAULT 0,
+  pace REAL NOT NULL DEFAULT 0,
+  n_ops INTEGER NOT NULL DEFAULT 0,
+  last_tick_wall REAL NOT NULL DEFAULT 0,
+  updated_at REAL NOT NULL
 );
 """
 
 
 def init_db():
+    """Create schema. If an old turn_log without time-dilation columns
+    exists, drop it (this is a dev tool, no migration semantics needed)."""
     with _lock:
         c = _conn()
         try:
             for stmt in _schema_split(_SCHEMA):
                 c.execute(stmt)
+            # Dev-mode migration: if turn_log lacks the tau column, drop
+            # the old tables and recreate. This is destructive but acceptable
+            # for a local simulation tool.
+            cols = {row[1] for row in c.execute("PRAGMA table_info(turn_log)").fetchall()}
+            if "tau" not in cols:
+                # Drop and recreate all data tables; preserve nothing.
+                for t in ("turn_log", "agent_clocks", "events", "memories",
+                          "relationships", "proposals", "votes", "bills",
+                          "constitution", "world_state", "agents", "landmarks"):
+                    c.execute(f"DROP TABLE IF EXISTS {t}")
+                for stmt in _schema_split(_SCHEMA):
+                    c.execute(stmt)
+                # Reset the world_state flag so world.bootstrap() reseeds
+                c.execute("DELETE FROM world_state")
         finally:
             c.close()
 
@@ -164,5 +191,30 @@ def log_event(actor: str, kind: str, payload: dict):
                 "INSERT INTO events(ts,actor,kind,payload) VALUES(?,?,?,?)",
                 (time.time(), actor, kind, json.dumps(payload)),
             )
+        finally:
+            c.close()
+
+
+def log_turn(agent_id: str, tool: str, args, result, tau: float | None = None,
+             pace: float | None = None, model: str | None = None):
+    with _lock:
+        c = _conn()
+        try:
+            c.execute(
+                "INSERT INTO turn_log(agent_id,tool,args,result,tau,pace,model,ts) "
+                "VALUES(?,?,?,?,?,?,?,?)",
+                (agent_id, tool, json.dumps(args), json.dumps(result),
+                 tau, pace, model, time.time()),
+            )
+            if tau is not None or pace is not None:
+                c.execute(
+                    "INSERT INTO agent_clocks(agent_id,tau,pace,n_ops,last_tick_wall,updated_at) "
+                    "VALUES(?,COALESCE(?,0),COALESCE(?,0),1,?,?) "
+                    "ON CONFLICT(agent_id) DO UPDATE SET "
+                    "tau=COALESCE(?,tau), pace=COALESCE(?,pace), "
+                    "n_ops=n_ops+1, last_tick_wall=?, updated_at=?",
+                    (agent_id, tau, pace, time.time(), time.time(),
+                     tau, pace, time.time(), time.time()),
+                )
         finally:
             c.close()

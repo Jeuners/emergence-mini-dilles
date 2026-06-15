@@ -25,7 +25,7 @@ from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
-from engine import db, world, agents as agents_mod, governance, tools
+from engine import db, world, agents as agents_mod, governance, tools, llm as llm_mod
 from engine.turn import engine as sim_engine
 
 ROOT = Path(__file__).resolve().parent
@@ -78,6 +78,7 @@ def _query(sql: str, params=()):
 
 @app.get("/api/state")
 async def state():
+    from engine import time as time_mod
     return {
         "tick": db.get_world_state("tick", 0),
         "started_at": db.get_world_state("started_at"),
@@ -85,6 +86,9 @@ async def state():
         "agents": agents_mod.all_agents(),
         "landmarks": world.list_landmarks(),
         "constitution": governance.load_constitution(),
+        "llm": llm_mod.provider_info(),
+        "clocks": time_mod.registry.snapshot_all(),
+        "drift": time_mod.registry.drift_report(),
     }
 
 
