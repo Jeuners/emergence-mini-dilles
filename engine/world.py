@@ -95,7 +95,8 @@ def nearby_agents(agent_id: str, x: int, y: int, radius: float = HEARING_DISTANC
     c.row_factory = sqlite3.Row
     try:
         rows = c.execute(
-            "SELECT id,name,x,y,energy FROM agents WHERE id!=? AND alive=1", (agent_id,)
+            "SELECT id,name,personality,x,y,energy FROM agents "
+            "WHERE id!=? AND alive=1", (agent_id,)
         ).fetchall()
         out = []
         for r in rows:
@@ -103,6 +104,12 @@ def nearby_agents(agent_id: str, x: int, y: int, radius: float = HEARING_DISTANC
             if d <= radius:
                 d2 = dict(r)
                 d2["distance"] = d
+                # personality is stored as a JSON string; parse so callers
+                # get a real list (matches agents_mod.get).
+                try:
+                    d2["personality"] = json.loads(d2.get("personality") or "[]")
+                except Exception:
+                    d2["personality"] = []
                 out.append(d2)
         return out
     finally:

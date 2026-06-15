@@ -164,8 +164,10 @@ async def ws(ws: WebSocket):
             try:
                 msg = await asyncio.to_thread(queue.get, timeout=30.0)
                 await ws.send_json(msg)
+            except WebSocketDisconnect:
+                break
             except Exception:
-                # heartbeat
-                await ws.send_json({"type": "ping", "ts": time.time()})
+                # client went away — stop sending
+                break
     except WebSocketDisconnect:
         pass
