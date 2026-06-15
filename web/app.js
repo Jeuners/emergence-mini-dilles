@@ -515,3 +515,8 @@ refreshTexts();
 connectWS();
 setInterval(refreshProposals, 5000);
 setInterval(refreshTexts, 8000);
+
+// Optional demo mode: http://.../?replay=1 auto-starts replay
+if (location.search.includes('replay=1')) {
+  setTimeout(loadReplay, 600);
+}
