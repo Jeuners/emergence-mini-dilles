@@ -58,7 +58,9 @@ def _provider():
 
 
 PROVIDER = _provider()
-OLLAMA_URL = os.environ.get("EMERGENCE_LLM_URL", "http://127.0.0.1:11434")
+OLLAMA_URL = os.environ.get("EMERGENCE_OLLAMA_URL",
+                            os.environ.get("EMERGENCE_LLM_URL", "http://127.0.0.1:11434"))
+OLLAMA_FALLBACK_URL = os.environ.get("EMERGENCE_OLLAMA_FALLBACK_URL", OLLAMA_URL)
 OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
 OLLAMA_MODEL = os.environ.get("EMERGENCE_OLLAMA_MODEL", "llama3.2:3b")
 OPENROUTER_MODEL = os.environ.get("EMERGENCE_OPENROUTER_MODEL", "anthropic/claude-3.5-haiku")
@@ -162,34 +164,56 @@ def _args_schema(tool):
 def is_available():
     if PROVIDER == "openrouter":
         return bool(_openrouter_key())
-    try:
-        req = urllib.request.Request(f"{OLLAMA_URL}/api/tags", method="GET")
-        urllib.request.urlopen(req, timeout=2)
-        return True
-    except Exception:
-        return False
+    # Try primary Ollama, then fallback
+    for url in (OLLAMA_URL, OLLAMA_FALLBACK_URL):
+        if not url:
+            continue
+        try:
+            req = urllib.request.Request(f"{url}/api/tags", method="GET")
+            urllib.request.urlopen(req, timeout=2)
+            return True
+        except Exception:
+            continue
+    return False
 
 
 # -------- Chat calls --------
 
 def chat_ollama(messages, tools, model, timeout):
-    payload = {
-        "model": model,
-        "messages": messages,
-        "stream": False,
-        "options": {"temperature": 0.2},
-    }
-    if tools:
-        payload["tools"] = tools
-        payload["format"] = "json"
-    req = urllib.request.Request(
-        f"{OLLAMA_URL}/api/chat",
-        data=json.dumps(payload).encode("utf-8"),
-        headers={"Content-Type": "application/json"},
-        method="POST",
-    )
-    with urllib.request.urlopen(req, timeout=timeout) as resp:
-        return json.loads(resp.read().decode("utf-8"))
+    last_err = None
+    for url in (OLLAMA_URL, OLLAMA_FALLBACK_URL):
+        if not url or url == OLLAMA_URL and OLLAMA_FALLBACK_URL == OLLAMA_URL:
+            urls = [url]
+        else:
+            urls = [url]
+        # Try primary, then fallback (if different)
+        pass
+    # Try each URL in order
+    for url in (OLLAMA_URL, OLLAMA_FALLBACK_URL):
+        if not url:
+            continue
+        try:
+            payload = {
+                "model": model,
+                "messages": messages,
+                "stream": False,
+                "options": {"temperature": 0.2},
+            }
+            if tools:
+                payload["tools"] = tools
+                payload["format"] = "json"
+            req = urllib.request.Request(
+                f"{url}/api/chat",
+                data=json.dumps(payload).encode("utf-8"),
+                headers={"Content-Type": "application/json"},
+                method="POST",
+            )
+            with urllib.request.urlopen(req, timeout=timeout) as resp:
+                return json.loads(resp.read().decode("utf-8"))
+        except Exception as e:
+            last_err = e
+            continue
+    raise last_err or RuntimeError("no Ollama URL configured")
 
 
 def chat_openrouter(messages, tools, model, timeout):
@@ -290,4 +314,5 @@ def provider_info():
         "model": default_model(),
         "openrouter_configured": bool(_openrouter_key()),
         "ollama_url": OLLAMA_URL,
+        "ollama_fallback_url": OLLAMA_FALLBACK_URL,
     }

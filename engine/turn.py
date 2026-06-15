@@ -138,8 +138,10 @@ class Engine:
 
     def _record_turn(self, agent_id, tool, args, result, model: str | None = None):
         clock = time_mod.registry.get(agent_id)
+        meta = reasoning.get_last_decision()
         db.log_turn(agent_id, tool, args, result,
-                    tau=clock.tau, pace=clock.pace, model=model)
+                    tau=clock.tau, pace=clock.pace, model=model,
+                    decision_mode=meta.get("mode"))
 
     def _broadcast(self, message: dict):
         self.broadcasts.put(message)

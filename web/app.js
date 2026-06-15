@@ -289,5 +289,7 @@ document.getElementById('manual').addEventListener('submit', async (e) => {
 
 refreshAll();
 populateManual();
+refreshTexts();
 connectWS();
 setInterval(refreshProposals, 5000);
+setInterval(refreshTexts, 8000);  // periodic refresh of historical texts

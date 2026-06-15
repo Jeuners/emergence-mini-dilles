@@ -141,6 +141,86 @@ async def blogs():
     return out
 
 
+@app.get("/api/texts")
+async def texts(limit: int = 20):
+    """Return recent texts produced by agents (blogs, billboards, speech,
+    memories) with the model that produced them.
+
+    Each row has: {agent, model, kind, body, ts, source}
+    source: 'llm' (tool call from LLM) or 'fallback' (rule-based default)
+    """
+    import sqlite3
+    out: list[dict] = []
+    # blogs
+    c = sqlite3.connect(db.DB_PATH, check_same_thread=False)
+    c.row_factory = sqlite3.Row
+    try:
+        for r in c.execute("SELECT * FROM bills ORDER BY id DESC LIMIT ?", (limit,)):
+            try:
+                p = json.loads(r["body"])
+            except Exception:
+                p = {"title": "Untitled", "body": str(r["body"])[:500]}
+            tmodel = c.execute("SELECT model FROM turn_log WHERE agent_id=? AND tool='write_blog' ORDER BY id DESC LIMIT 1",
+                              (r["author"],)).fetchone()
+            out.append({
+                "agent": r["author"],
+                "model": tmodel["model"] if tmodel else "?",
+                "kind": "blog",
+                "body": (p.get("title", "") + " — " + p.get("body", ""))[:600],
+                "ts": r["ts"],
+                "source": "llm" if tmodel and tmodel["model"] else "fallback",
+            })
+        # billboard posts
+        for r in c.execute("SELECT * FROM events WHERE kind='billboard_post' ORDER BY id DESC LIMIT ?", (limit,)):
+            try:
+                p = json.loads(r["payload"])
+            except Exception:
+                p = {"text": str(r["payload"])[:200]}
+            tmodel = c.execute("SELECT model FROM turn_log WHERE agent_id=? AND tool='add_to_billboard' ORDER BY id DESC LIMIT 1",
+                              (r["actor"],)).fetchone()
+            out.append({
+                "agent": r["actor"],
+                "model": tmodel["model"] if tmodel else "?",
+                "kind": "billboard",
+                "body": p.get("text", "")[:400],
+                "ts": r["ts"],
+                "source": "llm" if tmodel and tmodel["model"] else "fallback",
+            })
+        # memories
+        for r in c.execute("SELECT * FROM memories ORDER BY id DESC LIMIT ?", (limit,)):
+            tmodel = c.execute("SELECT model FROM turn_log WHERE agent_id=? AND tool='add_to_longterm_memory' ORDER BY id DESC LIMIT 1",
+                              (r["agent_id"],)).fetchone()
+            out.append({
+                "agent": r["agent_id"],
+                "model": tmodel["model"] if tmodel else "?",
+                "kind": "memory",
+                "body": str(r["content"])[:400],
+                "ts": r["ts"],
+                "source": "llm" if tmodel and tmodel["model"] else "fallback",
+            })
+        # speak_to_all / say_to_agent (from turn_log args)
+        for r in c.execute("SELECT * FROM turn_log WHERE tool IN ('speak_to_all','say_to_agent') ORDER BY id DESC LIMIT ?", (limit,)):
+            try:
+                a = json.loads(r["args"])
+            except Exception:
+                continue
+            text = a.get("text", "")
+            if not text:
+                continue
+            out.append({
+                "agent": r["agent_id"],
+                "model": r["model"] or "?",
+                "kind": r["tool"].replace("_", " "),
+                "body": text[:400],
+                "ts": r["ts"],
+                "source": "llm" if r["model"] and "/" in r["model"] else "llm",
+            })
+    finally:
+        c.close()
+    out.sort(key=lambda x: -x["ts"])
+    return out[:limit]
+
+
 @app.post("/api/turn/{agent_id}")
 async def force_turn(agent_id: str, body: dict):
     tool_name = body.get("tool")

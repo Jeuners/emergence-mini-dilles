@@ -107,6 +107,7 @@ CREATE TABLE IF NOT EXISTS turn_log (
   tau REAL,             -- agent proper time at this turn
   pace REAL,            -- EWMA pace at this turn
   model TEXT,           -- LLM model that produced the decision
+  decision_mode TEXT,   -- 'llm', 'rule', or 'fallback:...'
   ts REAL NOT NULL
 );
 CREATE TABLE IF NOT EXISTS agent_clocks (
@@ -128,19 +129,19 @@ def init_db():
         try:
             for stmt in _schema_split(_SCHEMA):
                 c.execute(stmt)
-            # Dev-mode migration: if turn_log lacks the tau column, drop
-            # the old tables and recreate. This is destructive but acceptable
-            # for a local simulation tool.
+            # Dev-mode migration: if turn_log lacks any of the newer columns
+            # (tau, pace, model, decision_mode), drop and recreate all data
+            # tables. Destructive but acceptable for a local simulation tool.
             cols = {row[1] for row in c.execute("PRAGMA table_info(turn_log)").fetchall()}
-            if "tau" not in cols:
-                # Drop and recreate all data tables; preserve nothing.
+            required = {"tau", "pace", "model", "decision_mode"}
+            missing = required - cols
+            if missing:
                 for t in ("turn_log", "agent_clocks", "events", "memories",
                           "relationships", "proposals", "votes", "bills",
                           "constitution", "world_state", "agents", "landmarks"):
                     c.execute(f"DROP TABLE IF EXISTS {t}")
                 for stmt in _schema_split(_SCHEMA):
                     c.execute(stmt)
-                # Reset the world_state flag so world.bootstrap() reseeds
                 c.execute("DELETE FROM world_state")
         finally:
             c.close()
@@ -196,15 +197,16 @@ def log_event(actor: str, kind: str, payload: dict):
 
 
 def log_turn(agent_id: str, tool: str, args, result, tau: float | None = None,
-             pace: float | None = None, model: str | None = None):
+             pace: float | None = None, model: str | None = None,
+             decision_mode: str | None = None):
     with _lock:
         c = _conn()
         try:
             c.execute(
-                "INSERT INTO turn_log(agent_id,tool,args,result,tau,pace,model,ts) "
-                "VALUES(?,?,?,?,?,?,?,?)",
+                "INSERT INTO turn_log(agent_id,tool,args,result,tau,pace,model,decision_mode,ts) "
+                "VALUES(?,?,?,?,?,?,?,?,?)",
                 (agent_id, tool, json.dumps(args), json.dumps(result),
-                 tau, pace, model, time.time()),
+                 tau, pace, model, decision_mode, time.time()),
             )
             if tau is not None or pace is not None:
                 c.execute(
