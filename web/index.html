@@ -26,6 +26,24 @@
         <span class="dot lovely"></span>Lovely
         <span class="dot spark"></span>Spark
       </div>
+
+      <section class="replay-panel" id="replayPanel">
+        <h2>Replay</h2>
+        <div class="replay-controls">
+          <button id="replayPlay">▶ Play</button>
+          <button id="replayLive" class="active">● Live</button>
+          <input type="range" id="replaySlider" min="0" max="100" value="0" step="1" />
+          <span id="replayTime">—</span>
+          <select id="replayHours">
+            <option value="1">last 1h</option>
+            <option value="3">last 3h</option>
+            <option value="6">last 6h</option>
+            <option value="12" selected>last 12h</option>
+            <option value="24">last 24h</option>
+          </select>
+        </div>
+        <div class="replay-mode">replay mode</div>
+      </section>
     </section>
 
     <aside>

@@ -221,6 +221,80 @@ async def texts(limit: int = 20):
     return out[:limit]
 
 
+@app.get("/api/history")
+async def history(hours: float = 12.0):
+    """Return a chronological replay stream from the events table.
+
+    Query params:
+      hours: how far back to load (default 12).
+
+    Each frame contains:
+      ts, tick, kind, agents: {id: {x,y,energy,knowledge,influence,
+        credits,mood,tool,model,tau,pace,rationale}},
+      clocks, drift.
+    Frames are capped at 2000 to keep the payload small.
+    """
+    import sqlite3
+
+    since = time.time() - hours * 3600
+    rows = _query(
+        "SELECT ts, kind, actor, payload FROM events WHERE ts > ? ORDER BY id ASC",
+        (since,),
+    )
+    frames = []
+    last_agents: dict[str, dict] = {}
+    last_tick: dict = {}
+    last_clocks: dict = {}
+    last_drift: dict = {}
+    for r in rows:
+        try:
+            p = json.loads(r["payload"])
+        except Exception:
+            continue
+        if r["kind"] == "tick":
+            last_tick = {"tick": p.get("tick"), "ts": r["ts"]}
+            last_clocks = p.get("clocks", {})
+            last_drift = p.get("drift", {})
+        elif r["kind"] == "action":
+            a = p.get("agent")
+            if a:
+                last_agents[a] = {
+                    "x": p.get("x"),
+                    "y": p.get("y"),
+                    "energy": p.get("energy"),
+                    "knowledge": p.get("knowledge"),
+                    "influence": p.get("influence"),
+                    "credits": p.get("credits"),
+                    "mood": p.get("mood"),
+                    "tool": p.get("tool"),
+                    "model": p.get("model"),
+                    "tau": p.get("tau"),
+                    "pace": p.get("pace"),
+                    "rationale": p.get("rationale"),
+                    "name": p.get("name", a),
+                }
+        frames.append({
+            "ts": r["ts"],
+            "kind": r["kind"],
+            "actor": r["actor"],
+            "tick": last_tick.get("tick"),
+            "agents": dict(last_agents),
+            "clocks": dict(last_clocks),
+            "drift": dict(last_drift) if last_drift else None,
+            "event": p if r["kind"] == "action" else None,
+        })
+    # Cap size
+    if len(frames) > 2000:
+        frames = frames[-2000:]
+    return {
+        "hours": hours,
+        "frames": frames,
+        "total": len(frames),
+        "since": since,
+        "grid": {"w": world.GRID_W, "h": world.GRID_H},
+    }
+
+
 @app.post("/api/turn/{agent_id}")
 async def force_turn(agent_id: str, body: dict):
     tool_name = body.get("tool")

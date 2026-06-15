@@ -78,3 +78,15 @@ form#manual select, form#manual input { background: #060a0e; color: #d6e2ee;
 form#manual button { background: #6cf0c2; color: #060a0e; border: 0; padding: 6px;
                       font-weight: bold; cursor: pointer; }
 form#manual button:hover { background: #82ffd6; }
+
+.replay-panel { margin-top: 12px; padding: 10px; background: #0a1018; border: 1px solid #1c2733; }
+.replay-panel h2 { margin: 0 0 8px; font-size: 12px; text-transform: uppercase; letter-spacing: 1px; color: #6cf0c2; }
+.replay-controls { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.replay-controls button { background: #1c2733; color: #d6e2ee; border: 1px solid #2c3a4a; padding: 5px 10px; font-family: inherit; cursor: pointer; border-radius: 2px; }
+.replay-controls button:hover { background: #2c3a4a; }
+.replay-controls button.active { background: #6cf0c2; color: #060a0e; font-weight: bold; border-color: #6cf0c2; }
+.replay-controls input[type=range] { flex: 1; min-width: 120px; }
+.replay-controls select { background: #060a0e; color: #d6e2ee; border: 1px solid #1c2733; padding: 4px; font-family: inherit; }
+#replayTime { font-size: 11px; color: #8aa1b6; min-width: 90px; }
+.replay-mode { display: none; font-size: 10px; color: #ff8fb1; margin-top: 6px; text-transform: uppercase; }
+.replay-panel.active .replay-mode { display: block; }

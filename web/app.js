@@ -4,6 +4,8 @@ const ctx = canvas.getContext('2d');
 const GRID = 240;
 let snapshot = null;
 let actions = [];
+let replay = { frames: [], idx: 0, playing: false, raf: null, lastFrame: 0 };
+let mode = 'live'; // 'live' or 'replay'
 const AGENT_COLORS = {
   anchor: '#ffd166',
   flora:  '#6cf0c2',
@@ -27,8 +29,39 @@ const LANDMARK_COLORS = {
   home_spark:  '#3a3a3a',
 };
 
+function effectiveState() {
+  if (mode === 'replay' && replay.frames.length) {
+    const f = replay.frames[Math.min(replay.idx, replay.frames.length - 1)];
+    const agents = [];
+    for (const id of Object.keys(f.agents)) {
+      const a = f.agents[id];
+      agents.push({
+        id, name: a.name || id,
+        x: a.x, y: a.y,
+        energy: a.energy ?? 0,
+        knowledge: a.knowledge ?? 0,
+        influence: a.influence ?? 0,
+        credits: a.credits ?? 0,
+        mood: a.mood || 'neutral',
+        model: a.model || '',
+        tool: a.tool || '',
+      });
+    }
+    return {
+      agents,
+      landmarks: snapshot ? snapshot.landmarks : [],
+      clocks: f.clocks || {},
+      drift: f.drift,
+      tick: f.tick,
+      _replayFrame: f,
+    };
+  }
+  return snapshot;
+}
+
 function draw() {
-  if (!snapshot) return;
+  const state = effectiveState();
+  if (!state) return;
   const W = canvas.width, H = canvas.height;
   ctx.fillStyle = '#060a0e';
   ctx.fillRect(0, 0, W, H);
@@ -43,7 +76,7 @@ function draw() {
   }
 
   // landmarks
-  for (const lm of snapshot.landmarks) {
+  for (const lm of state.landmarks) {
     const x = (lm.x / GRID) * W;
     const y = (lm.y / GRID) * H;
     const isHome = lm.id.startsWith('home_');
@@ -60,7 +93,7 @@ function draw() {
   }
 
   // agents
-  for (const a of snapshot.agents) {
+  for (const a of state.agents) {
     const x = (a.x / GRID) * W;
     const y = (a.y / GRID) * H;
     ctx.fillStyle = AGENT_COLORS[a.id] || '#fff';
@@ -71,12 +104,41 @@ function draw() {
     ctx.font = 'bold 10px ui-monospace';
     ctx.textAlign = 'center';
     ctx.fillText(a.name[0], x, y + 3);
-    // energy halo
     ctx.strokeStyle = '#ffd166';
     ctx.lineWidth = 1;
     ctx.beginPath();
     ctx.arc(x, y, 8 + (100 - a.energy) * 0.06, 0, Math.PI * 2);
     ctx.stroke();
+  }
+
+  if (mode === 'replay' && state._replayFrame) {
+    drawReplayOverlay(state._replayFrame);
+  }
+}
+
+function drawReplayOverlay(f) {
+  const W = canvas.width, H = canvas.height;
+  ctx.fillStyle = 'rgba(6,10,14,0.75)';
+  ctx.fillRect(8, H - 66, 220, 58);
+  ctx.strokeStyle = '#1c2733';
+  ctx.lineWidth = 1;
+  ctx.strokeRect(8, H - 66, 220, 58);
+  ctx.fillStyle = '#6cf0c2';
+  ctx.font = '11px ui-monospace';
+  ctx.textAlign = 'left';
+  const t = new Date(f.ts * 1000).toLocaleTimeString();
+  ctx.fillText(`tick ${f.tick ?? '---'} | ${t}`, 14, H - 50);
+  if (f.kind === 'action' && f.event) {
+    const a = f.event.agent || f.actor;
+    const tool = f.event.tool || '';
+    ctx.fillStyle = AGENT_COLORS[a] || '#d6e2ee';
+    ctx.fillText(`${a} -> ${tool}`, 14, H - 34);
+    const model = shortModel(f.event.model || '');
+    ctx.fillStyle = '#8aa1b6';
+    ctx.fillText(model || 'fallback', 14, H - 18);
+  } else {
+    ctx.fillStyle = '#8aa1b6';
+    ctx.fillText('tick update', 14, H - 34);
   }
 }
 
@@ -205,8 +267,9 @@ function addFeed(entry) {
 }
 
 function refreshHeader() {
-  document.getElementById('tick').textContent = snapshot?.tick || 0;
-  document.getElementById('agentCount').textContent = snapshot?.agents.length || 0;
+  const state = effectiveState();
+  document.getElementById('tick').textContent = state?.tick || 0;
+  document.getElementById('agentCount').textContent = state?.agents.length || 0;
 }
 
 async function refreshAll() {
@@ -303,9 +366,152 @@ document.getElementById('manual').addEventListener('submit', async (e) => {
   console.log('manual turn result', out);
 });
 
+function refreshTexts() {
+  fetch('/api/texts').then(r => r.json()).then(d => {
+    document.getElementById('textsCount').textContent = `(${d.length})`;
+    const wrap = document.getElementById('texts');
+    if (!d.length) {
+      wrap.innerHTML = '<small>Noch keine Texte. Agenten generieren welche ueber write_blog, add_to_billboard, speak_to_all, say_to_agent, add_to_longterm_memory.</small>';
+      return;
+    }
+    wrap.innerHTML = '';
+    for (const t of d) {
+      const el = document.createElement('div');
+      el.className = 'text-card';
+      const isLocal = !((t.model || '').includes('/'));
+      const src = t.source === 'fallback' ? 'fallback' : 'llm';
+      el.innerHTML = `
+        <div class="head">
+          <span class="agent ${t.agent}">${t.agent}</span>
+          <span class="model ${isLocal ? 'local' : 'cloud'}">${shortModel(t.model)}</span>
+          <span class="kind">${t.kind}</span>
+        </div>
+        <div class="body ${src}">${escapeHtml(t.body)}</div>
+        <div class="ts">${new Date(t.ts * 1000).toLocaleString()}</div>
+      `;
+      wrap.appendChild(el);
+    }
+  });
+}
+
+function escapeHtml(s) {
+  return s.replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+
+/* ---------- Replay ---------- */
+const slider = document.getElementById('replaySlider');
+const playBtn = document.getElementById('replayPlay');
+const liveBtn = document.getElementById('replayLive');
+const hoursSel = document.getElementById('replayHours');
+const replayTime = document.getElementById('replayTime');
+const replayPanel = document.getElementById('replayPanel');
+
+function setReplayUI() {
+  if (mode === 'live') {
+    replayPanel.classList.remove('active');
+    liveBtn.classList.add('active');
+    playBtn.textContent = 'Play';
+    replayTime.textContent = 'live';
+    stopReplay();
+    return;
+  }
+  replayPanel.classList.add('active');
+  liveBtn.classList.remove('active');
+  slider.max = Math.max(0, replay.frames.length - 1);
+}
+
+function updateReplayFrame() {
+  replay.idx = Math.max(0, Math.min(replay.idx, replay.frames.length - 1));
+  slider.value = replay.idx;
+  const f = replay.frames[replay.idx];
+  if (f) {
+    const t = new Date(f.ts * 1000);
+    replayTime.textContent = `tick ${f.tick ?? '---'} | ${t.toLocaleTimeString()}`;
+    if (mode === 'replay') {
+      refreshHeader();
+      refreshClocks();
+      refreshDrift();
+      draw();
+    }
+  }
+}
+
+function stopReplay() {
+  replay.playing = false;
+  if (replay.raf) cancelAnimationFrame(replay.raf);
+  replay.raf = null;
+}
+
+function playReplay() {
+  if (!replay.frames.length) {
+    loadReplay();
+    return;
+  }
+  replay.playing = !replay.playing;
+  playBtn.textContent = replay.playing ? 'Pause' : 'Play';
+  if (replay.playing) replayLoop();
+}
+
+function replayLoop() {
+  if (!replay.playing || mode !== 'replay') return;
+  const now = performance.now();
+  if (!replay.lastFrame) replay.lastFrame = now;
+  const dt = now - replay.lastFrame;
+  if (dt > 80) {
+    replay.idx = Math.min(replay.idx + 1, replay.frames.length - 1);
+    updateReplayFrame();
+    replay.lastFrame = now;
+    if (replay.idx >= replay.frames.length - 1) {
+      replay.playing = false;
+      playBtn.textContent = 'Play';
+    }
+  }
+  replay.raf = requestAnimationFrame(replayLoop);
+}
+
+async function loadReplay() {
+  stopReplay();
+  const hours = parseFloat(hoursSel.value);
+  const r = await fetch(`/api/history?hours=${hours}`);
+  const data = await r.json();
+  replay.frames = data.frames || [];
+  replay.idx = 0;
+  if (replay.frames.length) {
+    mode = 'replay';
+    setReplayUI();
+    updateReplayFrame();
+    playReplay();
+  }
+}
+
+function enterLive() {
+  mode = 'live';
+  setReplayUI();
+  refreshAll();
+}
+
+function enterReplayFromSlider() {
+  mode = 'replay';
+  setReplayUI();
+}
+
+slider.addEventListener('input', () => {
+  if (mode !== 'replay') enterReplayFromSlider();
+  replay.idx = parseInt(slider.value, 10);
+  updateReplayFrame();
+});
+
+playBtn.addEventListener('click', () => {
+  if (mode !== 'replay') loadReplay();
+  else playReplay();
+});
+
+liveBtn.addEventListener('click', enterLive);
+hoursSel.addEventListener('change', loadReplay);
+
 refreshAll();
 populateManual();
 refreshTexts();
 connectWS();
 setInterval(refreshProposals, 5000);
-setInterval(refreshTexts, 8000);  // periodic refresh of historical texts
+setInterval(refreshTexts, 8000);
